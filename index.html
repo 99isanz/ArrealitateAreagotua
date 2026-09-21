@@ -3,67 +3,62 @@
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     
-    <!-- Librerías A-Frame y MindAR -->
+    <!-- A-Frame 1.5.0 eta MindAR 1.2.5 -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
     
-    <!-- Script para rotación y escala táctil -->
+    <!-- Gesture Detector Library para A-Frame -->
+    <script src="https://cdn.jsdelivr.net/gh/fcor/aframe-gesture-detector/dist/aframe-gesture-detector.min.js"></script>
+
     <script>
-      AFRAME.registerComponent('drag-rotate-component', {
-        schema: { speed: { default: 1.5 } },
+      // Componente personalizado para rotar y escalar de forma fluida
+      AFRAME.registerComponent('gesture-handler', {
+        schema: {
+          enabled: { default: true },
+          rotationFactor: { default: 5 },
+          minScale: { default: 0.001 },
+          maxScale: { default: 1 }
+        },
         init: function () {
-          this.ifMouseDown = false;
-          this.x_cord = 0;
-          this.y_cord = 0;
-          this.initialDistance = 0;
-          this.initialScale = { x: 0.01, y: 0.01, z: 0.01 };
+          this.handleScale = this.handleScale.bind(this);
+          this.handleRotation = this.handleRotation.bind(this);
 
-          // Rotación táctil (un dedo)
-          window.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 1) {
-              this.ifMouseDown = true;
-              this.x_cord = e.touches[0].clientX;
-              this.y_cord = e.touches[0].clientY;
-            } else if (e.touches.length === 2) {
-              this.ifMouseDown = false;
-              this.initialDistance = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-              );
-              this.initialScale = { ...this.el.object3D.scale };
-            }
-          });
+          this.isVisible = false;
+          this.initialScale = this.el.object3D.scale.clone();
+          this.scaleFactor = 1;
 
-          window.addEventListener('touchend', () => {
-            this.ifMouseDown = false;
-            this.initialDistance = 0;
-          });
+          this.el.sceneEl.addEventListener('markerFound', () => { this.isVisible = true; });
+          this.el.sceneEl.addEventListener('targetFound', () => { this.isVisible = true; });
+          this.el.sceneEl.addEventListener('targetLost', () => { this.isVisible = false; });
+        },
+        update: function () {
+          if (this.data.enabled) {
+            this.el.sceneEl.addEventListener('onefingermove', this.handleRotation);
+            this.el.sceneEl.addEventListener('twofingermove', this.handleScale);
+          } else {
+            this.el.sceneEl.removeEventListener('onefingermove', this.handleRotation);
+            this.el.sceneEl.removeEventListener('twofingermove', this.handleScale);
+          }
+        },
+        remove: function () {
+          this.el.sceneEl.removeEventListener('onefingermove', this.handleRotation);
+          this.el.sceneEl.removeEventListener('twofingermove', this.handleScale);
+        },
+        handleRotation: function (event) {
+          if (this.isVisible) {
+            this.el.object3D.rotation.y += event.detail.positionChange.x * (this.data.rotationFactor / 1000);
+            this.el.object3D.rotation.x += event.detail.positionChange.y * (this.data.rotationFactor / 1000);
+          }
+        },
+        handleScale: function (event) {
+          if (this.isVisible) {
+            this.scaleFactor *= 1 + event.detail.spreadChange / 100;
+            this.scaleFactor = Math.min(Math.max(this.scaleFactor, this.data.minScale), this.data.maxScale);
 
-          window.addEventListener('touchmove', (e) => {
-            if (this.ifMouseDown && e.touches.length === 1) {
-              let temp_x = e.touches[0].clientX - this.x_cord;
-              let temp_y = e.touches[0].clientY - this.y_cord;
-              
-              this.el.object3D.rotation.y += (temp_x * this.data.speed) * 0.01;
-              this.el.object3D.rotation.x += (temp_y * this.data.speed) * 0.01;
-              
-              this.x_cord = e.touches[0].clientX;
-              this.y_cord = e.touches[0].clientY;
-            } else if (e.touches.length === 2 && this.initialDistance > 0) {
-              // Pellizco para Zoom (escalar)
-              let dist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-              );
-              let factor = dist / this.initialDistance;
-              
-              this.el.object3D.scale.set(
-                this.initialScale.x * factor,
-                this.initialScale.y * factor,
-                this.initialScale.z * factor
-              );
-            }
-          });
+            this.el.object3D.scale.x = this.scaleFactor * this.initialScale.x;
+            this.el.object3D.scale.y = this.scaleFactor * this.initialScale.y;
+            this.el.object3D.scale.z = this.scaleFactor * this.initialScale.z;
+          }
         }
       });
     </script>
@@ -74,31 +69,32 @@
     </style>
   </head>
   <body>
+    <!-- Configuración limpia del renderer sin propiedades deprecadas -->
     <a-scene 
       mindar-image="imageTargetSrc: ./targets.mind;" 
       color-space="sRGB" 
-      renderer="colorManagement: true; physicallyCorrectLights: false" 
+      renderer="colorManagement: true;" 
       vr-mode-ui="enabled: false" 
-      device-orientation-permission-ui="enabled: false">
+      device-orientation-permission-ui="enabled: false"
+      gesture-detector>
 
       <a-assets>
         <a-asset-item id="miModelo" src="./modelo.glb"></a-asset-item>
       </a-assets>
 
-      <!-- Luces del escenario -->
-      <a-light type="ambient" intensity="1.8"></a-light>
+      <!-- Iluminación ambiente y direccional estándar -->
+      <a-light type="ambient" intensity="1.5"></a-light>
       <a-light type="directional" position="1 2 1" intensity="1.0"></a-light>
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
       <a-entity mindar-image-target="targetIndex: 0">
-        <!-- Modelo 3D con componente de rotación táctil registrado -->
         <a-gltf-model 
           src="#miModelo" 
           position="0 0 0" 
           scale="0.01 0.01 0.01" 
           rotation="0 0 0"
-          drag-rotate-component>
+          gesture-handler="rotationFactor: 6; minScale: 0.1; maxScale: 10">
         </a-gltf-model>
       </a-entity>
 
