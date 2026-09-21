@@ -2,16 +2,15 @@
 <html>
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- A-Frame eta MindAR libreriak -->
+    <!-- Consola de depuración en pantalla móvil -->
+    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+    <script>eruda.init();</script>
+
+    <!-- Librerías A-Frame y MindAR -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-    <!-- Pantaila ukituz modeloa mugitu eta tamainaz aldatzeko libreria -->
-    <script src="https://cdn.jsdelivr.net/gh/fcor/aframe-gesture-detector/dist/aframe-gesture-detector.min.js"></script>
     <style>
-      body { 
-        margin: 0; 
-        overflow: hidden; 
-      }
+      body { margin: 0; overflow: hidden; }
     </style>
   </head>
   <body>
@@ -20,34 +19,20 @@
       color-space="sRGB" 
       renderer="colorManagement: true, physicallyCorrectLights: true" 
       vr-mode-ui="enabled: false" 
-      device-orientation-permission-ui="enabled: false"
-      gesture-detector>
+      device-orientation-permission-ui="enabled: false">
 
       <a-assets>
-        <!-- Ziurtatu 'modelo.glb' izena eta maiusculak/minusculak GitHub-en berdina direla -->
         <a-asset-item id="miModelo" src="./modelo.glb"></a-asset-item>
       </a-assets>
 
-      <!-- Argiteria orokorra modeloa ilun geratu ez dadin -->
-      <a-light type="ambient" intensity="1.5"></a-light>
-      <a-light type="directional" position="1 2 1" intensity="1"></a-light>
-
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <!-- Karteleko irudia detektatzean erakutsiko den egitura -->
       <a-entity mindar-image-target="targetIndex: 0">
-        <!-- 
-          HFSS-ko tamainak handiegiak izan daitezkeenez, scale="0.01 0.01 0.01" jartzen dugu.
-          Ikusten ez bada, probatu 'scale="0.1 0.1 0.1"' edo 'scale="1 1 1"'.
-        -->
-        <a-gltf-model 
-          src="#miModelo" 
-          position="0 0 0" 
-          scale="0.01 0.01 0.01" 
-          rotation="0 0 0"
-          class="clickable"
-          gesture-handler="minScale: 0.001; maxScale: 10">
-        </a-gltf-model>
+        <!-- Un cubo rojo de prueba para verificar si detecta la imagen -->
+        <a-box position="0 0 0.2" scale="0.2 0.2 0.2" material="color: red;"></a-box>
+
+        <!-- El modelo 3D -->
+        <a-gltf-model src="#miModelo" position="0 0 0" scale="0.01 0.01 0.01"></a-gltf-model>
       </a-entity>
 
     </a-scene>
