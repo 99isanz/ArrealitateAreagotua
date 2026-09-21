@@ -2,11 +2,9 @@
 <html>
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- Consola de depuración en pantalla móvil -->
     <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
     <script>eruda.init();</script>
 
-    <!-- Librerías A-Frame y MindAR -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
     <style>
@@ -25,14 +23,17 @@
         <a-asset-item id="miModelo" src="./modelo.glb"></a-asset-item>
       </a-assets>
 
+      <a-light type="ambient" intensity="1.5"></a-light>
+      <a-light type="directional" position="1 2 1" intensity="1"></a-light>
+
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
       <a-entity mindar-image-target="targetIndex: 0">
-        <!-- Un cubo rojo de prueba para verificar si detecta la imagen -->
-        <a-box position="0 0 0.2" scale="0.2 0.2 0.2" material="color: red;"></a-box>
+        <!-- Plano rojo directamente sobre el póster (anchura 1 = tamaño relativo al póster) -->
+        <a-plane color="red" opactiy="0.5" position="0 0 0" height="0.5" width="0.5"></a-plane>
 
-        <!-- El modelo 3D -->
-        <a-gltf-model src="#miModelo" position="0 0 0" scale="0.01 0.01 0.01"></a-gltf-model>
+        <!-- El modelo GLB -->
+        <a-gltf-model src="#miModelo" position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
       </a-entity>
 
     </a-scene>
