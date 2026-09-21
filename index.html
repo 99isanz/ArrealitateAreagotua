@@ -15,7 +15,8 @@
           rotationFactor: { default: 5 },
           minScale: { default: 0.1 },
           maxScale: { default: 10 },
-          panFactor: { default: 0.02 }
+          panFactor: { default: 0.02 },
+          maxDeltaPerEvent: { default: 40 }
         },
 
         init: function () {
@@ -71,8 +72,8 @@
             const y = event.touches[0].clientY;
 
             if (this.isVisible) {
-              const deltaX = x - this.lastX;
-              const deltaY = y - this.lastY;
+              const deltaX = this.clampDelta(x - this.lastX);
+              const deltaY = this.clampDelta(y - this.lastY);
               this.el.object3D.rotation.y += deltaX * (this.data.rotationFactor / 1000);
               this.el.object3D.rotation.x += deltaY * (this.data.rotationFactor / 1000);
             }
@@ -88,7 +89,7 @@
 
             if (this.isVisible) {
               if (this.lastDistance !== null) {
-                const delta = distance - this.lastDistance;
+                const delta = this.clampDelta(distance - this.lastDistance);
                 this.scaleFactor *= 1 + delta / 200;
                 this.scaleFactor = Math.min(Math.max(this.scaleFactor, this.data.minScale), this.data.maxScale);
 
@@ -98,12 +99,17 @@
               }
 
               if (this.lastCenter !== null) {
-                const deltaX = center.x - this.lastCenter.x;
-                const deltaY = center.y - this.lastCenter.y;
+                const deltaX = this.clampDelta(center.x - this.lastCenter.x);
+                const deltaY = this.clampDelta(center.y - this.lastCenter.y);
 
                 // Movimiento en pantalla -> desplazamiento en el plano X/Y del modelo
                 this.el.object3D.position.x += deltaX * this.data.panFactor;
                 this.el.object3D.position.y -= deltaY * this.data.panFactor;
+
+                // Límite para que no se pueda arrastrar fuera de un rango razonable
+                const maxOffset = 1;
+                this.el.object3D.position.x = Math.min(Math.max(this.el.object3D.position.x, -maxOffset), maxOffset);
+                this.el.object3D.position.y = Math.min(Math.max(this.el.object3D.position.y, -maxOffset), maxOffset);
               }
             }
 
@@ -124,6 +130,11 @@
             x: (touches[0].clientX + touches[1].clientX) / 2,
             y: (touches[0].clientY + touches[1].clientY) / 2
           };
+        },
+
+        clampDelta: function (delta) {
+          const max = this.data.maxDeltaPerEvent;
+          return Math.min(Math.max(delta, -max), max);
         }
       });
     </script>
@@ -156,7 +167,7 @@
           position="0 0 0"
           scale="0.01 0.01 0.01"
           rotation="0 0 0"
-          touch-gestures="rotationFactor: 6; minScale: 0.1; maxScale: 10">
+          touch-gestures="rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
         </a-gltf-model>
       </a-entity>
 
