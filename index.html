@@ -3,59 +3,102 @@
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     
-    <!-- Librerías base (A-Frame y MindAR) -->
+    <!-- Librerías A-Frame y MindAR -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
     
-    <!-- Librería para controles táctiles (NUEVA) -->
-    <script src="https://cdn.jsdelivr.net/gh/fcor/aframe-gesture-detector/dist/aframe-gesture-detector.min.js"></script>
-    
-    <!-- Consola de depuración (la ocultamos por defecto, toca el botón para verla) -->
-    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-    <script>eruda.init(); eruda.hide();</script>
+    <!-- Script para rotación y escala táctil -->
+    <script>
+      AFRAME.registerComponent('drag-rotate-component', {
+        schema: { speed: { default: 1.5 } },
+        init: function () {
+          this.ifMouseDown = false;
+          this.x_cord = 0;
+          this.y_cord = 0;
+          this.initialDistance = 0;
+          this.initialScale = { x: 0.01, y: 0.01, z: 0.01 };
+
+          // Rotación táctil (un dedo)
+          window.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+              this.ifMouseDown = true;
+              this.x_cord = e.touches[0].clientX;
+              this.y_cord = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+              this.ifMouseDown = false;
+              this.initialDistance = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+              );
+              this.initialScale = { ...this.el.object3D.scale };
+            }
+          });
+
+          window.addEventListener('touchend', () => {
+            this.ifMouseDown = false;
+            this.initialDistance = 0;
+          });
+
+          window.addEventListener('touchmove', (e) => {
+            if (this.ifMouseDown && e.touches.length === 1) {
+              let temp_x = e.touches[0].clientX - this.x_cord;
+              let temp_y = e.touches[0].clientY - this.y_cord;
+              
+              this.el.object3D.rotation.y += (temp_x * this.data.speed) * 0.01;
+              this.el.object3D.rotation.x += (temp_y * this.data.speed) * 0.01;
+              
+              this.x_cord = e.touches[0].clientX;
+              this.y_cord = e.touches[0].clientY;
+            } else if (e.touches.length === 2 && this.initialDistance > 0) {
+              // Pellizco para Zoom (escalar)
+              let dist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+              );
+              let factor = dist / this.initialDistance;
+              
+              this.el.object3D.scale.set(
+                this.initialScale.x * factor,
+                this.initialScale.y * factor,
+                this.initialScale.z * factor
+              );
+            }
+          });
+        }
+      });
+    </script>
 
     <style>
       body { margin: 0; overflow: hidden; }
-      /* Evita que el navegador móvil muestre el menú de selección de texto */
-      * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+      * { touch-action: none; }
     </style>
   </head>
   <body>
-    <!-- 
-      Añadimos 'gesture-detector' en la escena para activar los gestos táctiles.
-      También actualizamos 'renderer' para corregir la advertencia de iluminación.
-    -->
     <a-scene 
       mindar-image="imageTargetSrc: ./targets.mind;" 
       color-space="sRGB" 
-      renderer="colorManagement: true, physicallyCorrectLights: true" 
+      renderer="colorManagement: true; physicallyCorrectLights: false" 
       vr-mode-ui="enabled: false" 
-      device-orientation-permission-ui="enabled: false"
-      gesture-detector>
+      device-orientation-permission-ui="enabled: false">
 
       <a-assets>
         <a-asset-item id="miModelo" src="./modelo.glb"></a-asset-item>
       </a-assets>
 
-      <!-- Nueva iluminación más realista (puedes ajustar 'intensity') -->
-      <a-light type="ambient" intensity="1.2"></a-light>
-      <a-light type="directional" position="1 2 1" intensity="0.8"></a-light>
+      <!-- Luces del escenario -->
+      <a-light type="ambient" intensity="1.8"></a-light>
+      <a-light type="directional" position="1 2 1" intensity="1.0"></a-light>
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
       <a-entity mindar-image-target="targetIndex: 0">
-        <!-- 
-          Añadimos 'gesture-handler' y 'class="clickable"'. 
-          Esto activa la interacción para este modelo específico.
-          Puedes ajustar 'minScale' y 'maxScale' para el zoom.
-        -->
+        <!-- Modelo 3D con componente de rotación táctil registrado -->
         <a-gltf-model 
           src="#miModelo" 
           position="0 0 0" 
           scale="0.01 0.01 0.01" 
           rotation="0 0 0"
-          class="clickable"
-          gesture-handler="minScale: 0.001; maxScale: 10">
+          drag-rotate-component>
         </a-gltf-model>
       </a-entity>
 
