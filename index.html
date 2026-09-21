@@ -8,14 +8,13 @@
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <script>
-      // Componente propio para rotar y escalar con gestos táctiles,
-      // sin depender de librerías externas de gestos (más fiable en móvil).
+      // 3D eredua kudeatzeko gestuen osagaia (Touch Gestures)
       AFRAME.registerComponent('touch-gestures', {
         schema: {
-          rotationFactor: { default: 5 },
+          rotationFactor: { default: 6 },
           minScale: { default: 0.1 },
           maxScale: { default: 10 },
-          panFactor: { default: 0.01 },
+          panFactor: { default: 0.02 },
           maxDeltaPerEvent: { default: 30 }
         },
 
@@ -32,13 +31,13 @@
           this.onTouchStart = this.onTouchStart.bind(this);
           this.onTouchMove = this.onTouchMove.bind(this);
 
-          // El estado "visible" se controla desde la propia entidad del target,
-          // no desde la escena (más directo y evita depender del bubbling de eventos).
-          const targetEntity = document.querySelector('[mindar-image-target]');
-          targetEntity.addEventListener('targetFound', () => { this.isVisible = true; });
-          targetEntity.addEventListener('targetLost', () => { this.isVisible = false; });
+          // Target 0 (3D eredua) detektatzen denean soilik aktibatu gestuak
+          const targetEntity = document.querySelector('#target-modelo');
+          if (targetEntity) {
+            targetEntity.addEventListener('targetFound', () => { this.isVisible = true; });
+            targetEntity.addEventListener('targetLost', () => { this.isVisible = false; });
+          }
 
-          // El canvas de A-Frame no existe hasta que la escena está cargada
           const sceneEl = this.el.sceneEl;
           if (sceneEl.hasLoaded) {
             this.attachTouchListeners();
@@ -67,7 +66,6 @@
           event.preventDefault();
 
           if (event.touches.length === 1) {
-            // Un dedo -> rotar
             const x = event.touches[0].clientX;
             const y = event.touches[0].clientY;
 
@@ -78,12 +76,9 @@
               this.el.object3D.rotation.x += deltaY * (this.data.rotationFactor / 1000);
             }
 
-            // Se actualiza siempre, aunque el marcador no sea visible,
-            // para no acumular un salto grande cuando vuelva a detectarse.
             this.lastX = x;
             this.lastY = y;
           } else if (event.touches.length === 2) {
-            // Dos dedos -> escalar (pellizco) + mover (arrastrar el punto medio)
             const distance = this.getDistance(event.touches);
             const center = this.getCenter(event.touches);
 
@@ -102,18 +97,15 @@
                 const deltaX = this.clampDelta(center.x - this.lastCenter.x);
                 const deltaY = this.clampDelta(center.y - this.lastCenter.y);
 
-                // Movimiento en pantalla -> desplazamiento en el plano X/Y del modelo
                 this.el.object3D.position.x += deltaX * this.data.panFactor;
                 this.el.object3D.position.y -= deltaY * this.data.panFactor;
 
-                // Límite para que no se pueda arrastrar fuera de un rango razonable
                 const maxOffset = 1;
                 this.el.object3D.position.x = Math.min(Math.max(this.el.object3D.position.x, -maxOffset), maxOffset);
                 this.el.object3D.position.y = Math.min(Math.max(this.el.object3D.position.y, -maxOffset), maxOffset);
               }
             }
 
-            // Igual que arriba: se actualiza siempre para evitar saltos.
             this.lastDistance = distance;
             this.lastCenter = center;
           }
@@ -137,6 +129,23 @@
           return Math.min(Math.max(delta, -max), max);
         }
       });
+
+      // Bideoaren erreproduzitzailea kudeatzeko osagaia
+      AFRAME.registerComponent('video-handler', {
+        init: function () {
+          const video = document.querySelector('#kartel-bideoa');
+          
+          this.el.addEventListener('targetFound', () => {
+            video.play().catch(err => {
+              console.log("Autoplay blokeatuta egon daiteke, erabiltzaileak pantaila ukitzea behar du:", err);
+            });
+          });
+
+          this.el.addEventListener('targetLost', () => {
+            video.pause();
+          });
+        }
+      });
     </script>
 
     <style>
@@ -154,6 +163,7 @@
 
       <a-assets>
         <a-asset-item id="miModelo" src="./modelo.glb"></a-asset-item>
+        <video id="kartel-bideoa" src="./bideoa.mp4" loop crossorigin="anonymous" playsinline webkit-playsinline></video>
       </a-assets>
 
       <a-light type="ambient" intensity="1.5"></a-light>
@@ -161,7 +171,8 @@
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <a-entity mindar-image-target="targetIndex: 0">
+      <!-- Target 0: 3D Eredua -->
+      <a-entity id="target-modelo" mindar-image-target="targetIndex: 0">
         <a-gltf-model
           src="#miModelo"
           position="0 0 0"
@@ -171,6 +182,25 @@
         </a-gltf-model>
       </a-entity>
 
+      <!-- Target 1: Bideoa -->
+      <a-entity id="target-bideoa" mindar-image-target="targetIndex: 1" video-handler>
+        <a-video src="#kartel-bideoa" width="1" height="0.552" position="0 0 0" rotation="0 0 0"></a-video>
+      </a-entity>
+
     </a-scene>
+
+    <script>
+      // Pantailan klik egitean bideoaren audioa desblokeatzeko laguntzailea
+      document.body.addEventListener('click', () => {
+        const video = document.querySelector('#kartel-bideoa');
+        if (video && video.paused) {
+          // Soilik target-a ikusten ari bada erreproduzituko da
+          const targetBideoa = document.querySelector('#target-bideoa');
+          if (targetBideoa && targetBideoa.object3D.visible) {
+            video.play();
+          }
+        }
+      });
+    </script>
   </body>
 </html>
