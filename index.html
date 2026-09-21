@@ -2,63 +2,99 @@
 <html>
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    
-    <!-- A-Frame 1.5.0 eta MindAR 1.2.5 -->
+
+    <!-- A-Frame 1.5.0 + MindAR 1.2.5 -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-    
-    <!-- Gesture Detector Library para A-Frame -->
-    <script src="https://cdn.jsdelivr.net/gh/fcor/aframe-gesture-detector/dist/aframe-gesture-detector.min.js"></script>
 
     <script>
-      // Componente personalizado para rotar y escalar de forma fluida
-      AFRAME.registerComponent('gesture-handler', {
+      // Componente propio para rotar y escalar con gestos táctiles,
+      // sin depender de librerías externas de gestos (más fiable en móvil).
+      AFRAME.registerComponent('touch-gestures', {
         schema: {
-          enabled: { default: true },
           rotationFactor: { default: 5 },
-          minScale: { default: 0.001 },
-          maxScale: { default: 1 }
+          minScale: { default: 0.1 },
+          maxScale: { default: 10 }
         },
-        init: function () {
-          this.handleScale = this.handleScale.bind(this);
-          this.handleRotation = this.handleRotation.bind(this);
 
+        init: function () {
           this.isVisible = false;
           this.initialScale = this.el.object3D.scale.clone();
           this.scaleFactor = 1;
 
-          this.el.sceneEl.addEventListener('markerFound', () => { this.isVisible = true; });
-          this.el.sceneEl.addEventListener('targetFound', () => { this.isVisible = true; });
-          this.el.sceneEl.addEventListener('targetLost', () => { this.isVisible = false; });
-        },
-        update: function () {
-          if (this.data.enabled) {
-            this.el.sceneEl.addEventListener('onefingermove', this.handleRotation);
-            this.el.sceneEl.addEventListener('twofingermove', this.handleScale);
-          } else {
-            this.el.sceneEl.removeEventListener('onefingermove', this.handleRotation);
-            this.el.sceneEl.removeEventListener('twofingermove', this.handleScale);
-          }
-        },
-        remove: function () {
-          this.el.sceneEl.removeEventListener('onefingermove', this.handleRotation);
-          this.el.sceneEl.removeEventListener('twofingermove', this.handleScale);
-        },
-        handleRotation: function (event) {
-          if (this.isVisible) {
-            this.el.object3D.rotation.y += event.detail.positionChange.x * (this.data.rotationFactor / 1000);
-            this.el.object3D.rotation.x += event.detail.positionChange.y * (this.data.rotationFactor / 1000);
-          }
-        },
-        handleScale: function (event) {
-          if (this.isVisible) {
-            this.scaleFactor *= 1 + event.detail.spreadChange / 100;
-            this.scaleFactor = Math.min(Math.max(this.scaleFactor, this.data.minScale), this.data.maxScale);
+          this.lastX = 0;
+          this.lastY = 0;
+          this.lastDistance = null;
 
-            this.el.object3D.scale.x = this.scaleFactor * this.initialScale.x;
-            this.el.object3D.scale.y = this.scaleFactor * this.initialScale.y;
-            this.el.object3D.scale.z = this.scaleFactor * this.initialScale.z;
+          this.onTouchStart = this.onTouchStart.bind(this);
+          this.onTouchMove = this.onTouchMove.bind(this);
+
+          // El estado "visible" se controla desde la propia entidad del target,
+          // no desde la escena (más directo y evita depender del bubbling de eventos).
+          const targetEntity = document.querySelector('[mindar-image-target]');
+          targetEntity.addEventListener('targetFound', () => { this.isVisible = true; });
+          targetEntity.addEventListener('targetLost', () => { this.isVisible = false; });
+
+          // El canvas de A-Frame no existe hasta que la escena está cargada
+          const sceneEl = this.el.sceneEl;
+          if (sceneEl.hasLoaded) {
+            this.attachTouchListeners();
+          } else {
+            sceneEl.addEventListener('loaded', () => this.attachTouchListeners());
           }
+        },
+
+        attachTouchListeners: function () {
+          const canvas = this.el.sceneEl.canvas;
+          canvas.addEventListener('touchstart', this.onTouchStart, { passive: false });
+          canvas.addEventListener('touchmove', this.onTouchMove, { passive: false });
+        },
+
+        onTouchStart: function (event) {
+          if (event.touches.length === 1) {
+            this.lastX = event.touches[0].clientX;
+            this.lastY = event.touches[0].clientY;
+          } else if (event.touches.length === 2) {
+            this.lastDistance = this.getDistance(event.touches);
+          }
+        },
+
+        onTouchMove: function (event) {
+          if (!this.isVisible) return;
+          event.preventDefault();
+
+          if (event.touches.length === 1) {
+            // Un dedo -> rotar
+            const x = event.touches[0].clientX;
+            const y = event.touches[0].clientY;
+            const deltaX = x - this.lastX;
+            const deltaY = y - this.lastY;
+
+            this.el.object3D.rotation.y += deltaX * (this.data.rotationFactor / 1000);
+            this.el.object3D.rotation.x += deltaY * (this.data.rotationFactor / 1000);
+
+            this.lastX = x;
+            this.lastY = y;
+          } else if (event.touches.length === 2) {
+            // Dos dedos -> escalar (pellizco)
+            const distance = this.getDistance(event.touches);
+            if (this.lastDistance !== null) {
+              const delta = distance - this.lastDistance;
+              this.scaleFactor *= 1 + delta / 200;
+              this.scaleFactor = Math.min(Math.max(this.scaleFactor, this.data.minScale), this.data.maxScale);
+
+              this.el.object3D.scale.x = this.scaleFactor * this.initialScale.x;
+              this.el.object3D.scale.y = this.scaleFactor * this.initialScale.y;
+              this.el.object3D.scale.z = this.scaleFactor * this.initialScale.z;
+            }
+            this.lastDistance = distance;
+          }
+        },
+
+        getDistance: function (touches) {
+          const dx = touches[0].clientX - touches[1].clientX;
+          const dy = touches[0].clientY - touches[1].clientY;
+          return Math.sqrt(dx * dx + dy * dy);
         }
       });
     </script>
@@ -69,32 +105,29 @@
     </style>
   </head>
   <body>
-    <!-- Configuración limpia del renderer sin propiedades deprecadas -->
-    <a-scene 
-      mindar-image="imageTargetSrc: ./targets.mind;" 
-      color-space="sRGB" 
-      renderer="colorManagement: true;" 
-      vr-mode-ui="enabled: false" 
-      device-orientation-permission-ui="enabled: false"
-      gesture-detector>
+    <a-scene
+      mindar-image="imageTargetSrc: ./targets.mind;"
+      color-space="sRGB"
+      renderer="colorManagement: true;"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false">
 
       <a-assets>
         <a-asset-item id="miModelo" src="./modelo.glb"></a-asset-item>
       </a-assets>
 
-      <!-- Iluminación ambiente y direccional estándar -->
       <a-light type="ambient" intensity="1.5"></a-light>
       <a-light type="directional" position="1 2 1" intensity="1.0"></a-light>
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
       <a-entity mindar-image-target="targetIndex: 0">
-        <a-gltf-model 
-          src="#miModelo" 
-          position="0 0 0" 
-          scale="0.01 0.01 0.01" 
+        <a-gltf-model
+          src="#miModelo"
+          position="0 0 0"
+          scale="0.01 0.01 0.01"
           rotation="0 0 0"
-          gesture-handler="rotationFactor: 6; minScale: 0.1; maxScale: 10">
+          touch-gestures="rotationFactor: 6; minScale: 0.1; maxScale: 10">
         </a-gltf-model>
       </a-entity>
 
