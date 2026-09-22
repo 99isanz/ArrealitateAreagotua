@@ -130,11 +130,11 @@
         }
       });
 
-      // Bideoaren erreproduzitzailea kudeatzeko osagaia
+      // Bideoaren erreproduzitzailea kudeatzeko osagaia (kartela)
       AFRAME.registerComponent('video-handler', {
         init: function () {
           const video = document.querySelector('#kartel-bideoa');
-          
+
           this.el.addEventListener('targetFound', () => {
             video.play().catch(err => {
               console.log("Autoplay blokeatuta egon daiteke, erabiltzaileak pantaila ukitzea behar du:", err);
@@ -146,11 +146,80 @@
           });
         }
       });
+
+      // CM / DM modua kudeatzeko osagaia (bi "gif" bezala erabilitako bideoak)
+      AFRAME.registerComponent('modo-handler', {
+        init: function () {
+          this.currentMode = 'cm'; // modu lehenetsia
+          this.videoCM = document.querySelector('#video-cm');
+          this.videoDM = document.querySelector('#video-dm');
+          this.planeCM = document.querySelector('#plane-cm');
+          this.planeDM = document.querySelector('#plane-dm');
+          this.buttons = document.querySelector('#modo-botoiak');
+
+          this.el.addEventListener('targetFound', () => {
+            this.buttons.style.display = 'flex';
+            this.showMode(this.currentMode);
+          });
+
+          this.el.addEventListener('targetLost', () => {
+            this.buttons.style.display = 'none';
+            this.videoCM.pause();
+            this.videoDM.pause();
+          });
+        },
+
+        showMode: function (mode) {
+          this.currentMode = mode;
+
+          if (mode === 'cm') {
+            this.planeCM.setAttribute('visible', true);
+            this.planeDM.setAttribute('visible', false);
+            this.videoDM.pause();
+            this.videoCM.currentTime = 0;
+            this.videoCM.play().catch(() => {});
+          } else {
+            this.planeCM.setAttribute('visible', false);
+            this.planeDM.setAttribute('visible', true);
+            this.videoCM.pause();
+            this.videoDM.currentTime = 0;
+            this.videoDM.play().catch(() => {});
+          }
+        }
+      });
     </script>
 
     <style>
       body { margin: 0; overflow: hidden; }
       * { touch-action: none; }
+
+      #modo-botoiak {
+        display: none;
+        position: fixed;
+        bottom: 30px;
+        left: 0;
+        right: 0;
+        justify-content: center;
+        gap: 16px;
+        z-index: 999;
+        touch-action: auto;
+      }
+
+      #modo-botoiak button {
+        padding: 12px 28px;
+        font-size: 16px;
+        font-weight: bold;
+        border: none;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.85);
+        color: #222;
+        touch-action: auto;
+      }
+
+      #modo-botoiak button.activo {
+        background: #2b7cff;
+        color: #fff;
+      }
     </style>
   </head>
   <body>
@@ -164,6 +233,8 @@
       <a-assets>
         <a-asset-item id="miModelo" src="./modelo.glb"></a-asset-item>
         <video id="kartel-bideoa" src="./bideoa.mp4" loop crossorigin="anonymous" playsinline webkit-playsinline></video>
+        <video id="video-cm" src="./cm.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
+        <video id="video-dm" src="./dm.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
       </a-assets>
 
       <a-light type="ambient" intensity="1.5"></a-light>
@@ -182,24 +253,54 @@
         </a-gltf-model>
       </a-entity>
 
-      <!-- Target 1: Bideoa -->
+      <!-- Target 1: Bideoa (kartela) -->
       <a-entity id="target-bideoa" mindar-image-target="targetIndex: 1" video-handler>
         <a-video src="#kartel-bideoa" width="1" height="0.552" position="0 0 0" rotation="0 0 0"></a-video>
       </a-entity>
 
+      <!-- Target 2: CM / DM modua (bi "gif" bideo gisa) -->
+      <a-entity id="target-modo" mindar-image-target="targetIndex: 2" modo-handler>
+        <a-video id="plane-cm" src="#video-cm" width="1" height="0.552" position="0 0 0" rotation="0 0 0" visible="true"></a-video>
+        <a-video id="plane-dm" src="#video-dm" width="1" height="0.552" position="0 0 0" rotation="0 0 0" visible="false"></a-video>
+      </a-entity>
+
     </a-scene>
 
+    <!-- CM / DM botoiak, AR eszenaren gainean -->
+    <div id="modo-botoiak">
+      <button id="btn-cm" class="activo">CM</button>
+      <button id="btn-dm">DM</button>
+    </div>
+
     <script>
-      // Pantailan klik egitean bideoaren audioa desblokeatzeko laguntzailea
+      // Pantailan klik egitean bideoaren audioa desblokeatzeko laguntzailea (kartela)
       document.body.addEventListener('click', () => {
         const video = document.querySelector('#kartel-bideoa');
         if (video && video.paused) {
-          // Soilik target-a ikusten ari bada erreproduzituko da
           const targetBideoa = document.querySelector('#target-bideoa');
           if (targetBideoa && targetBideoa.object3D.visible) {
             video.play();
           }
         }
+      });
+
+      // CM / DM botoien kudeaketa
+      document.addEventListener('DOMContentLoaded', () => {
+        const btnCM = document.querySelector('#btn-cm');
+        const btnDM = document.querySelector('#btn-dm');
+        const targetModo = document.querySelector('#target-modo');
+
+        btnCM.addEventListener('click', () => {
+          targetModo.components['modo-handler'].showMode('cm');
+          btnCM.classList.add('activo');
+          btnDM.classList.remove('activo');
+        });
+
+        btnDM.addEventListener('click', () => {
+          targetModo.components['modo-handler'].showMode('dm');
+          btnDM.classList.add('activo');
+          btnCM.classList.remove('activo');
+        });
       });
     </script>
   </body>
