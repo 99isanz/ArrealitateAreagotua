@@ -9,13 +9,15 @@
 
     <script>
       // 3D eredua kudeatzeko gestuen osagaia (Touch Gestures)
+      // targetSelector bidez marker desberdinei lotu daiteke (target-modelo, target-modo...)
       AFRAME.registerComponent('touch-gestures', {
         schema: {
           rotationFactor: { default: 6 },
           minScale: { default: 0.1 },
           maxScale: { default: 10 },
           panFactor: { default: 0.02 },
-          maxDeltaPerEvent: { default: 30 }
+          maxDeltaPerEvent: { default: 30 },
+          targetSelector: { default: '#target-modelo' }
         },
 
         init: function () {
@@ -31,8 +33,7 @@
           this.onTouchStart = this.onTouchStart.bind(this);
           this.onTouchMove = this.onTouchMove.bind(this);
 
-          // Target 0 (3D eredua) detektatzen denean soilik aktibatu gestuak
-          const targetEntity = document.querySelector('#target-modelo');
+          const targetEntity = document.querySelector(this.data.targetSelector);
           if (targetEntity) {
             targetEntity.addEventListener('targetFound', () => { this.isVisible = true; });
             targetEntity.addEventListener('targetLost', () => { this.isVisible = false; });
@@ -52,6 +53,12 @@
           canvas.addEventListener('touchmove', this.onTouchMove, { passive: false });
         },
 
+        // Gestuak soilik aplikatzen dira target-a ikusgai badago ETA eredua bera ikusgai badago
+        // (adib. "Simulazioak" moduan eredua ezkutuan dago, orduan ez du erreakzionatu behar)
+        active: function () {
+          return this.isVisible && this.el.object3D.visible;
+        },
+
         onTouchStart: function (event) {
           if (event.touches.length === 1) {
             this.lastX = event.touches[0].clientX;
@@ -69,7 +76,7 @@
             const x = event.touches[0].clientX;
             const y = event.touches[0].clientY;
 
-            if (this.isVisible) {
+            if (this.active()) {
               const deltaX = this.clampDelta(x - this.lastX);
               const deltaY = this.clampDelta(y - this.lastY);
               this.el.object3D.rotation.y += deltaX * (this.data.rotationFactor / 1000);
@@ -82,7 +89,7 @@
             const distance = this.getDistance(event.touches);
             const center = this.getCenter(event.touches);
 
-            if (this.isVisible) {
+            if (this.active()) {
               if (this.lastDistance !== null) {
                 const delta = this.clampDelta(distance - this.lastDistance);
                 this.scaleFactor *= 1 + delta / 200;
@@ -130,7 +137,7 @@
         }
       });
 
-      // Bideoaren erreproduzitzailea kudeatzeko osagaia (kartela)
+      // Bideoaren erreproduzitzailea kudeatzeko osagaia (kartela, target 1)
       AFRAME.registerComponent('video-handler', {
         init: function () {
           const video = document.querySelector('#kartel-bideoa');
@@ -147,44 +154,91 @@
         }
       });
 
-      // CM / DM modua kudeatzeko osagaia (bi "gif" bezala erabilitako bideoak)
+      // Target 2: "3D Modeloa" / "Simulazioak" moduak kudeatzeko osagaia
       AFRAME.registerComponent('modo-handler', {
         init: function () {
-          this.currentMode = 'cm'; // modu lehenetsia
-          this.videoCM = document.querySelector('#video-cm');
-          this.videoDM = document.querySelector('#video-dm');
-          this.planeCM = document.querySelector('#plane-cm');
-          this.planeDM = document.querySelector('#plane-dm');
-          this.buttons = document.querySelector('#modo-botoiak');
+          this.topMode = '3d';          // '3d' edo 'sim'
+          this.combo = { g1: 'cm', g2: 'Mag', g3: 'Fas' }; // konbinazio lehenetsia -> cmMagFas
+
+          this.comboKeys = [
+            'dmVectFrec', 'dmVectFas', 'dmMagFrec', 'dmMagFas',
+            'cmVectFrec', 'cmVectFas', 'cmMagFrec', 'cmMagFas'
+          ];
+
+          this.modeloEl = document.querySelector('#cmc-modelo');
+
+          this.simItems = {};
+          this.comboKeys.forEach(key => {
+            this.simItems[key] = {
+              video: document.querySelector('#video-' + key),
+              plane: document.querySelector('#plane-' + key)
+            };
+          });
+
+          this.uiTop = document.querySelector('#fila-top');
+          this.uiSim = document.querySelector('#fila-sim');
+          this.btn3d = document.querySelector('#btn-3d');
+          this.btnSim = document.querySelector('#btn-sim');
 
           this.el.addEventListener('targetFound', () => {
-            this.buttons.style.display = 'flex';
-            this.showMode(this.currentMode);
+            this.uiTop.style.display = 'flex';
+            this.applyState();
           });
 
           this.el.addEventListener('targetLost', () => {
-            this.buttons.style.display = 'none';
-            this.videoCM.pause();
-            this.videoDM.pause();
+            this.uiTop.style.display = 'none';
+            this.uiSim.style.display = 'none';
+            this.pauseAllVideos();
           });
         },
 
-        showMode: function (mode) {
-          this.currentMode = mode;
+        comboKey: function () {
+          return this.combo.g1 + this.combo.g2 + this.combo.g3;
+        },
 
-          if (mode === 'cm') {
-            this.planeCM.setAttribute('visible', true);
-            this.planeDM.setAttribute('visible', false);
-            this.videoDM.pause();
-            this.videoCM.currentTime = 0;
-            this.videoCM.play().catch(() => {});
+        pauseAllVideos: function () {
+          Object.values(this.simItems).forEach(item => item.video.pause());
+        },
+
+        setTopMode: function (mode) {
+          this.topMode = mode;
+          this.applyState();
+        },
+
+        setGrupo: function (grupo, valor) {
+          this.combo[grupo] = valor;
+          this.applyState();
+        },
+
+        applyState: function () {
+          const show3d = this.topMode === '3d';
+          const showSim = this.topMode === 'sim';
+
+          // Eredua 3D
+          this.modeloEl.setAttribute('visible', show3d);
+
+          // Simulazio-taldeen botoi lerroa
+          this.uiSim.style.display = showSim ? 'flex' : 'none';
+
+          if (!showSim) {
+            this.pauseAllVideos();
+            Object.values(this.simItems).forEach(item => item.plane.setAttribute('visible', false));
           } else {
-            this.planeCM.setAttribute('visible', false);
-            this.planeDM.setAttribute('visible', true);
-            this.videoCM.pause();
-            this.videoDM.currentTime = 0;
-            this.videoDM.play().catch(() => {});
+            const activeKey = this.comboKey();
+            Object.entries(this.simItems).forEach(([key, item]) => {
+              const active = key === activeKey;
+              item.plane.setAttribute('visible', active);
+              if (active) {
+                item.video.currentTime = 0;
+                item.video.play().catch(() => {});
+              } else {
+                item.video.pause();
+              }
+            });
           }
+
+          this.btn3d.classList.toggle('activo', show3d);
+          this.btnSim.classList.toggle('activo', showSim);
         }
       });
     </script>
@@ -193,10 +247,10 @@
       body { margin: 0; overflow: hidden; }
       * { touch-action: none; }
 
-      #modo-botoiak {
+      #fila-top,
+      #fila-sim {
         display: none;
         position: fixed;
-        bottom: 30px;
         left: 0;
         right: 0;
         justify-content: center;
@@ -205,18 +259,25 @@
         touch-action: auto;
       }
 
-      #modo-botoiak button {
-        padding: 12px 28px;
-        font-size: 16px;
+      #fila-top { bottom: 24px; }
+      #fila-sim { bottom: 90px; flex-direction: column; align-items: center; gap: 10px; }
+
+      .grupo-botoiak { display: flex; gap: 10px; }
+
+      #fila-top button,
+      .grupo-botoiak button {
+        padding: 10px 22px;
+        font-size: 15px;
         font-weight: bold;
         border: none;
-        border-radius: 24px;
+        border-radius: 22px;
         background: rgba(255, 255, 255, 0.85);
         color: #222;
         touch-action: auto;
       }
 
-      #modo-botoiak button.activo {
+      #fila-top button.activo,
+      .grupo-botoiak button.activo {
         background: #2b7cff;
         color: #fff;
       }
@@ -233,8 +294,17 @@
       <a-assets>
         <a-asset-item id="miModelo" src="./modelo.glb"></a-asset-item>
         <video id="kartel-bideoa" src="./bideoa.mp4" loop crossorigin="anonymous" playsinline webkit-playsinline></video>
-        <video id="video-cm" src="./cm.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
-        <video id="video-dm" src="./dm.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
+
+        <a-asset-item id="cmcModelo" src="./CMC.glb"></a-asset-item>
+
+        <video id="video-dmVectFrec" src="./dmVectFrec.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
+        <video id="video-dmVectFas" src="./dmVectFas.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
+        <video id="video-dmMagFrec" src="./dmMagFrec.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
+        <video id="video-dmMagFas" src="./dmMagFas.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
+        <video id="video-cmVectFrec" src="./cmVectFrec.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
+        <video id="video-cmVectFas" src="./cmVectFas.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
+        <video id="video-cmMagFrec" src="./cmMagFrec.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
+        <video id="video-cmMagFas" src="./cmMagFas.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
       </a-assets>
 
       <a-light type="ambient" intensity="1.5"></a-light>
@@ -242,14 +312,14 @@
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <!-- Target 0: 3D Eredua -->
+      <!-- Target 0: 3D Eredua (jatorrizkoa) -->
       <a-entity id="target-modelo" mindar-image-target="targetIndex: 0">
         <a-gltf-model
           src="#miModelo"
           position="0 0 0"
           scale="0.01 0.01 0.01"
           rotation="0 0 0"
-          touch-gestures="rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
+          touch-gestures="targetSelector: #target-modelo; rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
         </a-gltf-model>
       </a-entity>
 
@@ -258,22 +328,56 @@
         <a-video src="#kartel-bideoa" width="1" height="0.552" position="0 0 0" rotation="0 0 0"></a-video>
       </a-entity>
 
-      <!-- Target 2: CM / DM modua (bi "gif" bideo gisa) -->
+      <!-- Target 2: 3D Modeloa (CMC) edo Simulazioak (8 bideo) -->
       <a-entity id="target-modo" mindar-image-target="targetIndex: 2" modo-handler>
-        <a-video id="plane-cm" src="#video-cm" width="3" height="1.656" position="0 0 0" rotation="0 0 0" visible="true"></a-video>
-        <a-video id="plane-dm" src="#video-dm" width="3" height="1.656" position="0 0 0" rotation="0 0 0" visible="false"></a-video>
+
+        <a-gltf-model
+          id="cmc-modelo"
+          src="#cmcModelo"
+          position="0 0 0"
+          scale="0.01 0.01 0.01"
+          rotation="0 0 0"
+          visible="true"
+          touch-gestures="targetSelector: #target-modo; rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
+        </a-gltf-model>
+
+        <a-video id="plane-dmVectFrec" src="#video-dmVectFrec" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
+        <a-video id="plane-dmVectFas" src="#video-dmVectFas" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
+        <a-video id="plane-dmMagFrec" src="#video-dmMagFrec" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
+        <a-video id="plane-dmMagFas" src="#video-dmMagFas" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
+        <a-video id="plane-cmVectFrec" src="#video-cmVectFrec" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
+        <a-video id="plane-cmVectFas" src="#video-cmVectFas" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
+        <a-video id="plane-cmMagFrec" src="#video-cmMagFrec" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
+        <a-video id="plane-cmMagFas" src="#video-cmMagFas" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
+
       </a-entity>
 
     </a-scene>
 
-    <!-- CM / DM botoiak, AR eszenaren gainean -->
-    <div id="modo-botoiak">
-      <button id="btn-cm" class="activo">CM</button>
-      <button id="btn-dm">DM</button>
+    <!-- Goiko botoiak: 3D Modeloa / Simulazioak -->
+    <div id="fila-top">
+      <button id="btn-3d" class="activo">3D Modeloa</button>
+      <button id="btn-sim">Simulazioak</button>
+    </div>
+
+    <!-- Simulazio taldeak: CM/DM, Mag/Bekt, Fase/Frec -->
+    <div id="fila-sim">
+      <div class="grupo-botoiak">
+        <button data-grupo="g1" data-valor="cm" class="activo">CM</button>
+        <button data-grupo="g1" data-valor="dm">DM</button>
+      </div>
+      <div class="grupo-botoiak">
+        <button data-grupo="g2" data-valor="Mag" class="activo">Mag</button>
+        <button data-grupo="g2" data-valor="Vect">Bekt</button>
+      </div>
+      <div class="grupo-botoiak">
+        <button data-grupo="g3" data-valor="Fas" class="activo">Fase</button>
+        <button data-grupo="g3" data-valor="Frec">Frek</button>
+      </div>
     </div>
 
     <script>
-      // Pantailan klik egitean bideoaren audioa desblokeatzeko laguntzailea (kartela)
+      // Kartelaren bideoaren audioa desblokeatzeko laguntzailea
       document.body.addEventListener('click', () => {
         const video = document.querySelector('#kartel-bideoa');
         if (video && video.paused) {
@@ -284,22 +388,29 @@
         }
       });
 
-      // CM / DM botoien kudeaketa
       document.addEventListener('DOMContentLoaded', () => {
-        const btnCM = document.querySelector('#btn-cm');
-        const btnDM = document.querySelector('#btn-dm');
         const targetModo = document.querySelector('#target-modo');
 
-        btnCM.addEventListener('click', () => {
-          targetModo.components['modo-handler'].showMode('cm');
-          btnCM.classList.add('activo');
-          btnDM.classList.remove('activo');
+        const getComp = () => targetModo.components['modo-handler'];
+
+        document.querySelector('#btn-3d').addEventListener('click', () => {
+          getComp().setTopMode('3d');
         });
 
-        btnDM.addEventListener('click', () => {
-          targetModo.components['modo-handler'].showMode('dm');
-          btnDM.classList.add('activo');
-          btnCM.classList.remove('activo');
+        document.querySelector('#btn-sim').addEventListener('click', () => {
+          getComp().setTopMode('sim');
+        });
+
+        document.querySelectorAll('#fila-sim button').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const grupo = btn.dataset.grupo;
+            const valor = btn.dataset.valor;
+
+            getComp().setGrupo(grupo, valor);
+
+            btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('activo'));
+            btn.classList.add('activo');
+          });
         });
       });
     </script>
