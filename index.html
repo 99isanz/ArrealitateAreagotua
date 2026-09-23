@@ -134,13 +134,15 @@
         }
       });
 
-      // Bideo/argazkietarako osagai arinagoa: SOILIK bi hatzeko pellizkoarekin
-      // eskalatzen du (ez du biratzen ez mugitzen, eskatu zenuen bezala)
+      // Bideo/argazkietarako osagaia: bi hatzeko pellizkoarekin eskalatu
+      // eta bi hatzekin arrastatuta gora/behera (eta alboetara) mugitu.
+      // Ez du hatz bakarreko biraketarik (bideoak/argazkiak ez dira biratu behar).
       AFRAME.registerComponent('pinch-scale', {
         schema: {
           minScale: { default: 0.3 },
           maxScale: { default: 5 },
           maxDeltaPerEvent: { default: 30 },
+          panFactor: { default: 0.02 },
           targetSelector: { default: '' }
         },
 
@@ -149,6 +151,7 @@
           this.initialScale = this.el.object3D.scale.clone();
           this.scaleFactor = 1;
           this.lastDistance = null;
+          this.lastCenter = null;
 
           this.onTouchStart = this.onTouchStart.bind(this);
           this.onTouchMove = this.onTouchMove.bind(this);
@@ -182,6 +185,7 @@
         onTouchStart: function (event) {
           if (event.touches.length === 2) {
             this.lastDistance = this.getDistance(event.touches);
+            this.lastCenter = this.getCenter(event.touches);
           }
         },
 
@@ -190,26 +194,67 @@
           event.preventDefault();
 
           const distance = this.getDistance(event.touches);
+          const center = this.getCenter(event.touches);
+          const max = this.data.maxDeltaPerEvent;
 
-          if (this.active() && this.lastDistance !== null) {
-            const max = this.data.maxDeltaPerEvent;
-            const delta = Math.min(Math.max(distance - this.lastDistance, -max), max);
+          if (this.active()) {
+            if (this.lastDistance !== null) {
+              const delta = Math.min(Math.max(distance - this.lastDistance, -max), max);
 
-            this.scaleFactor *= 1 + delta / 200;
-            this.scaleFactor = Math.min(Math.max(this.scaleFactor, this.data.minScale), this.data.maxScale);
+              this.scaleFactor *= 1 + delta / 200;
+              this.scaleFactor = Math.min(Math.max(this.scaleFactor, this.data.minScale), this.data.maxScale);
 
-            this.el.object3D.scale.x = this.scaleFactor * this.initialScale.x;
-            this.el.object3D.scale.y = this.scaleFactor * this.initialScale.y;
-            this.el.object3D.scale.z = this.scaleFactor * this.initialScale.z;
+              this.el.object3D.scale.x = this.scaleFactor * this.initialScale.x;
+              this.el.object3D.scale.y = this.scaleFactor * this.initialScale.y;
+              this.el.object3D.scale.z = this.scaleFactor * this.initialScale.z;
+            }
+
+            if (this.lastCenter !== null) {
+              const deltaX = Math.min(Math.max(center.x - this.lastCenter.x, -max), max);
+              const deltaY = Math.min(Math.max(center.y - this.lastCenter.y, -max), max);
+
+              this.el.object3D.position.x += deltaX * this.data.panFactor;
+              this.el.object3D.position.y -= deltaY * this.data.panFactor;
+
+              const maxOffset = 1;
+              this.el.object3D.position.x = Math.min(Math.max(this.el.object3D.position.x, -maxOffset), maxOffset);
+              this.el.object3D.position.y = Math.min(Math.max(this.el.object3D.position.y, -maxOffset), maxOffset);
+            }
           }
 
           this.lastDistance = distance;
+          this.lastCenter = center;
         },
 
         getDistance: function (touches) {
           const dx = touches[0].clientX - touches[1].clientX;
           const dy = touches[0].clientY - touches[1].clientY;
           return Math.sqrt(dx * dx + dy * dy);
+        },
+
+        getCenter: function (touches) {
+          return {
+            x: (touches[0].clientX + touches[1].clientX) / 2,
+            y: (touches[0].clientY + touches[1].clientY) / 2
+          };
+        }
+      });
+
+      // Eredu bat automatikoki erdiratzeko osagaia (pibotea ez badago
+      // ereduaren benetako erdigunean, adib. Cond.glb edo EMIFilter.glb)
+      AFRAME.registerComponent('center-model', {
+        init: function () {
+          this.el.addEventListener('model-loaded', () => {
+            const mesh = this.el.getObject3D('mesh');
+            if (!mesh) return;
+
+            const box = new THREE.Box3().setFromObject(mesh);
+            const center = box.getCenter(new THREE.Vector3());
+
+            mesh.position.x -= center.x;
+            mesh.position.y -= center.y;
+            mesh.position.z -= center.z;
+          });
         }
       });
 
@@ -445,37 +490,6 @@
       }
       #btn-blokeo.eskaneatzen { background: #2ecc71; }
       #btn-blokeo.blokeatuta { background: #e74c3c; }
-
-      /* Eskaneo markoa (bisuala soilik, ez du kamera prozesamendua aldatzen) */
-      #marco-eskaneo {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 220px;
-        height: 220px;
-        border: 3px solid rgba(255, 255, 255, 0.85);
-        border-radius: 14px;
-        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.25);
-        pointer-events: none;
-        z-index: 500;
-      }
-
-      #kontrol-marko {
-        position: fixed;
-        bottom: 24px;
-        left: 16px;
-        z-index: 1000;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        background: rgba(0, 0, 0, 0.4);
-        padding: 8px 12px;
-        border-radius: 16px;
-        touch-action: auto;
-      }
-      #kontrol-marko label { color: #fff; font-size: 12px; }
-      #kontrol-marko input[type="range"] { touch-action: auto; }
     </style>
   </head>
   <body>
@@ -526,7 +540,7 @@
       <a-entity id="target-kotxia" mindar-image-target="targetIndex: 0" video-handler="videoSelector: #video-kotxia">
         <a-video
           src="#video-kotxia"
-          width="3" height="1.656"
+          width="2.7" height="1.49"
           position="0 0 0" rotation="0 0 0"
           pinch-scale="targetSelector: #target-kotxia; minScale: 0.3; maxScale: 5">
         </a-video>
@@ -564,6 +578,7 @@
           position="0 0 0"
           scale="6 6 6"
           rotation="0 0 0"
+          center-model
           touch-gestures="targetSelector: #target-emifilter; rotationFactor: 6; minScale: 0.1; maxScale: 20; panFactor: 0.02">
         </a-gltf-model>
       </a-entity>
@@ -605,6 +620,7 @@
           scale="0.02 0.02 0.02"
           rotation="0 0 0"
           visible="true"
+          center-model
           touch-gestures="targetSelector: #target-kondentsadorea; rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
         </a-gltf-model>
 
@@ -637,13 +653,6 @@
 
     <!-- Blokeo / eskaneo botoia -->
     <button id="btn-blokeo" class="eskaneatzen">Eskaneatzen</button>
-
-    <!-- Eskaneo markoa + tamaina kontrolatzeko -->
-    <div id="marco-eskaneo"></div>
-    <div id="kontrol-marko">
-      <label for="marco-slider">Markoa</label>
-      <input type="range" id="marco-slider" min="120" max="360" value="220" />
-    </div>
 
     <!-- Target 1 botoiak: 3D Eredua / Bideoa -->
     <div id="fila-emi" class="fila-opciones">
@@ -724,15 +733,6 @@
             btnBlokeo.classList.remove('blokeatuta');
             btnBlokeo.classList.add('eskaneatzen');
           }
-        });
-
-        // Eskaneo markoaren tamaina
-        const marco = document.querySelector('#marco-eskaneo');
-        const slider = document.querySelector('#marco-slider');
-        slider.addEventListener('input', () => {
-          const size = slider.value + 'px';
-          marco.style.width = size;
-          marco.style.height = size;
         });
       });
     </script>
