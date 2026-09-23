@@ -8,8 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
     <script>
-      // 3D eredua kudeatzeko gestuen osagaia (Touch Gestures)
-      // targetSelector bidez marker desberdinei lotu daiteke
+      // 3D eredua kudeatzeko gestuen osagaia (biratu + eskalatu + mugitu)
       AFRAME.registerComponent('touch-gestures', {
         schema: {
           rotationFactor: { default: 6 },
@@ -53,7 +52,6 @@
           canvas.addEventListener('touchmove', this.onTouchMove, { passive: false });
         },
 
-        // Gestuak soilik aplikatzen dira target-a ikusgai badago ETA eredua bera ikusgai badago
         active: function () {
           return this.isVisible && this.el.object3D.visible;
         },
@@ -136,6 +134,85 @@
         }
       });
 
+      // Bideo/argazkietarako osagai arinagoa: SOILIK bi hatzeko pellizkoarekin
+      // eskalatzen du (ez du biratzen ez mugitzen, eskatu zenuen bezala)
+      AFRAME.registerComponent('pinch-scale', {
+        schema: {
+          minScale: { default: 0.3 },
+          maxScale: { default: 5 },
+          maxDeltaPerEvent: { default: 30 },
+          targetSelector: { default: '' }
+        },
+
+        init: function () {
+          this.isVisible = false;
+          this.initialScale = this.el.object3D.scale.clone();
+          this.scaleFactor = 1;
+          this.lastDistance = null;
+
+          this.onTouchStart = this.onTouchStart.bind(this);
+          this.onTouchMove = this.onTouchMove.bind(this);
+
+          if (this.data.targetSelector) {
+            const targetEntity = document.querySelector(this.data.targetSelector);
+            if (targetEntity) {
+              targetEntity.addEventListener('targetFound', () => { this.isVisible = true; });
+              targetEntity.addEventListener('targetLost', () => { this.isVisible = false; });
+            }
+          }
+
+          const sceneEl = this.el.sceneEl;
+          if (sceneEl.hasLoaded) {
+            this.attachTouchListeners();
+          } else {
+            sceneEl.addEventListener('loaded', () => this.attachTouchListeners());
+          }
+        },
+
+        attachTouchListeners: function () {
+          const canvas = this.el.sceneEl.canvas;
+          canvas.addEventListener('touchstart', this.onTouchStart, { passive: false });
+          canvas.addEventListener('touchmove', this.onTouchMove, { passive: false });
+        },
+
+        active: function () {
+          return this.isVisible && this.el.object3D.visible;
+        },
+
+        onTouchStart: function (event) {
+          if (event.touches.length === 2) {
+            this.lastDistance = this.getDistance(event.touches);
+          }
+        },
+
+        onTouchMove: function (event) {
+          if (event.touches.length !== 2) return;
+          event.preventDefault();
+
+          const distance = this.getDistance(event.touches);
+
+          if (this.active() && this.lastDistance !== null) {
+            const max = this.data.maxDeltaPerEvent;
+            const delta = Math.min(Math.max(distance - this.lastDistance, -max), max);
+
+            this.scaleFactor *= 1 + delta / 200;
+            this.scaleFactor = Math.min(Math.max(this.scaleFactor, this.data.minScale), this.data.maxScale);
+
+            this.el.object3D.scale.x = this.scaleFactor * this.initialScale.x;
+            this.el.object3D.scale.y = this.scaleFactor * this.initialScale.y;
+            this.el.object3D.scale.z = this.scaleFactor * this.initialScale.z;
+          }
+
+          this.lastDistance = distance;
+        },
+
+        getDistance: function (touches) {
+          const dx = touches[0].clientX - touches[1].clientX;
+          const dy = touches[0].clientY - touches[1].clientY;
+          return Math.sqrt(dx * dx + dy * dy);
+        }
+      });
+
       // Bideo soil bat targetFound/targetLost-ekin erreproduzitzeko osagaia (target 0)
       AFRAME.registerComponent('video-handler', {
         schema: {
@@ -158,8 +235,7 @@
         }
       });
 
-      // Bi aukeraren artean aukeratzeko osagai orokorra (adib. "3D Eredua" / "Bideoa")
-      // Modelo+bideo (target 1) eta modelo+argazki (target 4) bientzat erabilgarria
+      // Bi aukeraren artean aukeratzeko osagai orokorra
       AFRAME.registerComponent('bi-aukera-handler', {
         schema: {
           contentA: { default: '' },
@@ -351,6 +427,55 @@
         background: #2b7cff;
         color: #fff;
       }
+
+      /* Blokeo / eskaneo botoia */
+      #btn-blokeo {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        padding: 10px 24px;
+        border: none;
+        border-radius: 22px;
+        font-weight: bold;
+        font-size: 14px;
+        color: #fff;
+        touch-action: auto;
+      }
+      #btn-blokeo.eskaneatzen { background: #2ecc71; }
+      #btn-blokeo.blokeatuta { background: #e74c3c; }
+
+      /* Eskaneo markoa (bisuala soilik, ez du kamera prozesamendua aldatzen) */
+      #marco-eskaneo {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 220px;
+        height: 220px;
+        border: 3px solid rgba(255, 255, 255, 0.85);
+        border-radius: 14px;
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.25);
+        pointer-events: none;
+        z-index: 500;
+      }
+
+      #kontrol-marko {
+        position: fixed;
+        bottom: 24px;
+        left: 16px;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(0, 0, 0, 0.4);
+        padding: 8px 12px;
+        border-radius: 16px;
+        touch-action: auto;
+      }
+      #kontrol-marko label { color: #fff; font-size: 12px; }
+      #kontrol-marko input[type="range"] { touch-action: auto; }
     </style>
   </head>
   <body>
@@ -399,7 +524,12 @@
 
       <!-- Target 0: Kotxia bideoa -->
       <a-entity id="target-kotxia" mindar-image-target="targetIndex: 0" video-handler="videoSelector: #video-kotxia">
-        <a-video src="#video-kotxia" width="3" height="1.656" position="0 0 0" rotation="0 0 0"></a-video>
+        <a-video
+          src="#video-kotxia"
+          width="3" height="1.656"
+          position="0 0 0" rotation="0 0 0"
+          pinch-scale="targetSelector: #target-kotxia; minScale: 0.3; maxScale: 5">
+        </a-video>
       </a-entity>
 
       <!-- Target 1: EMI - modeloa edo bideoa, botoi bidez -->
@@ -418,7 +548,13 @@
           touch-gestures="targetSelector: #target-emi; rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
         </a-gltf-model>
 
-        <a-video id="emi-video-plane" src="#video-emifilter" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
+        <a-video
+          id="emi-video-plane"
+          src="#video-emifilter"
+          width="1.5" height="0.828"
+          position="0 0 0" visible="false"
+          pinch-scale="targetSelector: #target-emi; minScale: 0.3; maxScale: 5">
+        </a-video>
       </a-entity>
 
       <!-- Target 2: EMIFilter modeloa -->
@@ -426,9 +562,9 @@
         <a-gltf-model
           src="#emiFilterModelo"
           position="0 0 0"
-          scale="3.5 3.5 3.5"
+          scale="6 6 6"
           rotation="0 0 0"
-          touch-gestures="targetSelector: #target-emifilter; rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
+          touch-gestures="targetSelector: #target-emifilter; rotationFactor: 6; minScale: 0.1; maxScale: 20; panFactor: 0.02">
         </a-gltf-model>
       </a-entity>
 
@@ -445,14 +581,14 @@
           touch-gestures="targetSelector: #target-modo; rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
         </a-gltf-model>
 
-        <a-video id="plane-dmVectFrec" src="#video-dmVectFrec" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
-        <a-video id="plane-dmVectFas" src="#video-dmVectFas" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
-        <a-video id="plane-dmMagFrec" src="#video-dmMagFrec" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
-        <a-video id="plane-dmMagFas" src="#video-dmMagFas" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
-        <a-video id="plane-cmVectFrec" src="#video-cmVectFrec" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
-        <a-video id="plane-cmVectFas" src="#video-cmVectFas" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
-        <a-video id="plane-cmMagFrec" src="#video-cmMagFrec" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
-        <a-video id="plane-cmMagFas" src="#video-cmMagFas" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
+        <a-video id="plane-dmVectFrec" src="#video-dmVectFrec" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-dmVectFas" src="#video-dmVectFas" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-dmMagFrec" src="#video-dmMagFrec" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-dmMagFas" src="#video-dmMagFas" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-cmVectFrec" src="#video-cmVectFrec" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-cmVectFas" src="#video-cmVectFas" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-cmMagFrec" src="#video-cmMagFrec" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-cmMagFas" src="#video-cmMagFas" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
 
       </a-entity>
 
@@ -472,16 +608,42 @@
           touch-gestures="targetSelector: #target-kondentsadorea; rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
         </a-gltf-model>
 
-        <a-image id="kondents0-plane" src="#kondents0Img" width="1" height="0.75" position="0 0 0" visible="false"></a-image>
+        <a-image
+          id="kondents0-plane"
+          src="#kondents0Img"
+          width="1.6" height="1.2"
+          position="0 0 0" visible="false"
+          pinch-scale="targetSelector: #target-kondentsadorea; minScale: 0.3; maxScale: 5">
+        </a-image>
       </a-entity>
 
       <!-- Target 5: bi argazki batera -->
       <a-entity id="target-kondents-parea" mindar-image-target="targetIndex: 5">
-        <a-image src="#kondents1Img" width="0.9" height="0.675" position="-0.5 0 0"></a-image>
-        <a-image src="#kondents2Img" width="0.9" height="0.675" position="0.5 0 0"></a-image>
+        <a-image
+          src="#kondents1Img"
+          width="1.4" height="1.05"
+          position="-0.75 0 0"
+          pinch-scale="targetSelector: #target-kondents-parea; minScale: 0.3; maxScale: 5">
+        </a-image>
+        <a-image
+          src="#kondents2Img"
+          width="1.4" height="1.05"
+          position="0.75 0 0"
+          pinch-scale="targetSelector: #target-kondents-parea; minScale: 0.3; maxScale: 5">
+        </a-image>
       </a-entity>
 
     </a-scene>
+
+    <!-- Blokeo / eskaneo botoia -->
+    <button id="btn-blokeo" class="eskaneatzen">Eskaneatzen</button>
+
+    <!-- Eskaneo markoa + tamaina kontrolatzeko -->
+    <div id="marco-eskaneo"></div>
+    <div id="kontrol-marko">
+      <label for="marco-slider">Markoa</label>
+      <input type="range" id="marco-slider" min="120" max="360" value="220" />
+    </div>
 
     <!-- Target 1 botoiak: 3D Eredua / Bideoa -->
     <div id="fila-emi" class="fila-opciones">
@@ -535,6 +697,42 @@
             btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('activo'));
             btn.classList.add('activo');
           });
+        });
+
+        // Blokeo / eskaneo botoia: MindAR-en tracking-a pausatu/berrabiarazi
+        let blokeatuta = false;
+        const btnBlokeo = document.querySelector('#btn-blokeo');
+        const sceneEl = document.querySelector('a-scene');
+
+        btnBlokeo.addEventListener('click', () => {
+          const mindarSystem = sceneEl.systems['mindar-image-system'];
+          if (!mindarSystem) {
+            console.warn('mindar-image-system ez da aurkitu; egiaztatu MindAR bertsioa.');
+            return;
+          }
+
+          blokeatuta = !blokeatuta;
+
+          if (blokeatuta) {
+            mindarSystem.pause(true); // true = kamera bideoa martxan mantendu
+            btnBlokeo.textContent = 'Blokeatuta';
+            btnBlokeo.classList.remove('eskaneatzen');
+            btnBlokeo.classList.add('blokeatuta');
+          } else {
+            mindarSystem.unpause();
+            btnBlokeo.textContent = 'Eskaneatzen';
+            btnBlokeo.classList.remove('blokeatuta');
+            btnBlokeo.classList.add('eskaneatzen');
+          }
+        });
+
+        // Eskaneo markoaren tamaina
+        const marco = document.querySelector('#marco-eskaneo');
+        const slider = document.querySelector('#marco-slider');
+        slider.addEventListener('input', () => {
+          const size = slider.value + 'px';
+          marco.style.width = size;
+          marco.style.height = size;
         });
       });
     </script>
