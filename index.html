@@ -9,7 +9,7 @@
 
     <script>
       // 3D eredua kudeatzeko gestuen osagaia (Touch Gestures)
-      // targetSelector bidez marker desberdinei lotu daiteke (target-modelo, target-modo...)
+      // targetSelector bidez marker desberdinei lotu daiteke
       AFRAME.registerComponent('touch-gestures', {
         schema: {
           rotationFactor: { default: 6 },
@@ -54,7 +54,6 @@
         },
 
         // Gestuak soilik aplikatzen dira target-a ikusgai badago ETA eredua bera ikusgai badago
-        // (adib. "Simulazioak" moduan eredua ezkutuan dago, orduan ez du erreakzionatu behar)
         active: function () {
           return this.isVisible && this.el.object3D.visible;
         },
@@ -137,28 +136,97 @@
         }
       });
 
-      // Bideoaren erreproduzitzailea kudeatzeko osagaia (kartela, target 1)
+      // Bideo soil bat targetFound/targetLost-ekin erreproduzitzeko osagaia (target 0)
       AFRAME.registerComponent('video-handler', {
+        schema: {
+          videoSelector: { default: '' }
+        },
         init: function () {
-          const video = document.querySelector('#kartel-bideoa');
+          this.video = document.querySelector(this.data.videoSelector);
 
           this.el.addEventListener('targetFound', () => {
-            video.play().catch(err => {
-              console.log("Autoplay blokeatuta egon daiteke, erabiltzaileak pantaila ukitzea behar du:", err);
-            });
+            if (this.video) {
+              this.video.play().catch(err => {
+                console.log("Autoplay blokeatuta egon daiteke, erabiltzaileak pantaila ukitzea behar du:", err);
+              });
+            }
           });
 
           this.el.addEventListener('targetLost', () => {
-            video.pause();
+            if (this.video) this.video.pause();
           });
         }
       });
 
-      // Target 2: "3D Modeloa" / "Simulazioak" moduak kudeatzeko osagaia
+      // Bi aukeraren artean aukeratzeko osagai orokorra (adib. "3D Eredua" / "Bideoa")
+      // Modelo+bideo (target 1) eta modelo+argazki (target 4) bientzat erabilgarria
+      AFRAME.registerComponent('bi-aukera-handler', {
+        schema: {
+          contentA: { default: '' },
+          contentB: { default: '' },
+          videoA: { default: '' },
+          videoB: { default: '' },
+          buttonsRow: { default: '' },
+          buttonA: { default: '' },
+          buttonB: { default: '' }
+        },
+
+        init: function () {
+          this.option = 'A';
+
+          this.contentA = document.querySelector(this.data.contentA);
+          this.contentB = document.querySelector(this.data.contentB);
+          this.videoA = this.data.videoA ? document.querySelector(this.data.videoA) : null;
+          this.videoB = this.data.videoB ? document.querySelector(this.data.videoB) : null;
+          this.buttonsRow = document.querySelector(this.data.buttonsRow);
+          this.buttonA = document.querySelector(this.data.buttonA);
+          this.buttonB = document.querySelector(this.data.buttonB);
+
+          this.el.addEventListener('targetFound', () => {
+            if (this.buttonsRow) this.buttonsRow.style.display = 'flex';
+            this.applyState();
+          });
+
+          this.el.addEventListener('targetLost', () => {
+            if (this.buttonsRow) this.buttonsRow.style.display = 'none';
+            if (this.videoA) this.videoA.pause();
+            if (this.videoB) this.videoB.pause();
+          });
+
+          if (this.buttonA) this.buttonA.addEventListener('click', () => this.selectOption('A'));
+          if (this.buttonB) this.buttonB.addEventListener('click', () => this.selectOption('B'));
+        },
+
+        selectOption: function (opt) {
+          this.option = opt;
+          this.applyState();
+        },
+
+        applyState: function () {
+          const isA = this.option === 'A';
+
+          if (this.contentA) this.contentA.setAttribute('visible', isA);
+          if (this.contentB) this.contentB.setAttribute('visible', !isA);
+
+          if (this.videoA) {
+            if (isA) { this.videoA.currentTime = 0; this.videoA.play().catch(() => {}); }
+            else { this.videoA.pause(); }
+          }
+          if (this.videoB) {
+            if (!isA) { this.videoB.currentTime = 0; this.videoB.play().catch(() => {}); }
+            else { this.videoB.pause(); }
+          }
+
+          if (this.buttonA) this.buttonA.classList.toggle('activo', isA);
+          if (this.buttonB) this.buttonB.classList.toggle('activo', !isA);
+        }
+      });
+
+      // Target 3: "3D Modeloa" / "Simulazioak" moduak kudeatzeko osagaia (CMC)
       AFRAME.registerComponent('modo-handler', {
         init: function () {
-          this.topMode = '3d';          // '3d' edo 'sim'
-          this.combo = { g1: 'cm', g2: 'Mag', g3: 'Fas' }; // konbinazio lehenetsia -> cmMagFas
+          this.topMode = '3d';
+          this.combo = { g1: 'cm', g2: 'Mag', g3: 'Fas' };
 
           this.comboKeys = [
             'dmVectFrec', 'dmVectFas', 'dmMagFrec', 'dmMagFas',
@@ -214,10 +282,7 @@
           const show3d = this.topMode === '3d';
           const showSim = this.topMode === 'sim';
 
-          // Eredua 3D
           this.modeloEl.setAttribute('visible', show3d);
-
-          // Simulazio-taldeen botoi lerroa
           this.uiSim.style.display = showSim ? 'flex' : 'none';
 
           if (!showSim) {
@@ -248,7 +313,8 @@
       * { touch-action: none; }
 
       #fila-top,
-      #fila-sim {
+      #fila-sim,
+      .fila-opciones {
         display: none;
         position: fixed;
         left: 0;
@@ -259,12 +325,15 @@
         touch-action: auto;
       }
 
-      #fila-top { bottom: 24px; }
+      #fila-top,
+      .fila-opciones { bottom: 24px; }
+
       #fila-sim { bottom: 90px; flex-direction: column; align-items: center; gap: 10px; }
 
       .grupo-botoiak { display: flex; gap: 10px; }
 
       #fila-top button,
+      .fila-opciones button,
       .grupo-botoiak button {
         padding: 10px 22px;
         font-size: 15px;
@@ -277,6 +346,7 @@
       }
 
       #fila-top button.activo,
+      .fila-opciones button.activo,
       .grupo-botoiak button.activo {
         background: #2b7cff;
         color: #fff;
@@ -292,11 +362,18 @@
       device-orientation-permission-ui="enabled: false">
 
       <a-assets>
-        <a-asset-item id="miModelo" src="./modelo.glb"></a-asset-item>
-        <video id="kartel-bideoa" src="./bideoa.mp4" loop crossorigin="anonymous" playsinline webkit-playsinline></video>
+        <!-- Target 0: Kotxia -->
+        <video id="video-kotxia" src="./Kotxia.mp4" loop crossorigin="anonymous" playsinline webkit-playsinline></video>
 
+        <!-- Target 1: EMI (modeloa / bideoa) -->
+        <a-asset-item id="emiRealModelo" src="./EMIReal.glb"></a-asset-item>
+        <video id="video-emifilter" src="./EMIfilter.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
+
+        <!-- Target 2: EMIFilter modeloa -->
+        <a-asset-item id="emiFilterModelo" src="./EMIFilter.glb"></a-asset-item>
+
+        <!-- Target 3: CMC (modeloa + simulazioak) -->
         <a-asset-item id="cmcModelo" src="./CMC.glb"></a-asset-item>
-
         <video id="video-dmVectFrec" src="./dmVectFrec.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
         <video id="video-dmVectFas" src="./dmVectFas.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
         <video id="video-dmMagFrec" src="./dmMagFrec.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
@@ -305,6 +382,14 @@
         <video id="video-cmVectFas" src="./cmVectFas.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
         <video id="video-cmMagFrec" src="./cmMagFrec.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
         <video id="video-cmMagFas" src="./cmMagFas.mp4" loop muted crossorigin="anonymous" playsinline webkit-playsinline></video>
+
+        <!-- Target 4: Kondentsadorea (modeloa / argazkia) -->
+        <a-asset-item id="condModelo" src="./Cond.glb"></a-asset-item>
+        <img id="kondents0Img" src="./Kondents0.jpg" crossorigin="anonymous" />
+
+        <!-- Target 5: bi argazki -->
+        <img id="kondents1Img" src="./Kondents1.jpg" crossorigin="anonymous" />
+        <img id="kondents2Img" src="./Kondents2.jpg" crossorigin="anonymous" />
       </a-assets>
 
       <a-light type="ambient" intensity="1.5"></a-light>
@@ -312,24 +397,43 @@
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <!-- Target 0: 3D Eredua (jatorrizkoa) -->
-      <a-entity id="target-modelo" mindar-image-target="targetIndex: 0">
+      <!-- Target 0: Kotxia bideoa -->
+      <a-entity id="target-kotxia" mindar-image-target="targetIndex: 0" video-handler="videoSelector: #video-kotxia">
+        <a-video src="#video-kotxia" width="1" height="0.552" position="0 0 0" rotation="0 0 0"></a-video>
+      </a-entity>
+
+      <!-- Target 1: EMI - modeloa edo bideoa, botoi bidez -->
+      <a-entity
+        id="target-emi"
+        mindar-image-target="targetIndex: 1"
+        bi-aukera-handler="contentA: #emi-modelo; contentB: #emi-video-plane; videoB: #video-emifilter; buttonsRow: #fila-emi; buttonA: #btn-emi-3d; buttonB: #btn-emi-bideoa">
+
         <a-gltf-model
-          src="#miModelo"
+          id="emi-modelo"
+          src="#emiRealModelo"
           position="0 0 0"
-          scale="0.8 0.8 0.8"
+          scale="0.02 0.02 0.02"
           rotation="0 0 0"
-          touch-gestures="targetSelector: #target-modelo; rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
+          visible="true"
+          touch-gestures="targetSelector: #target-emi; rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
+        </a-gltf-model>
+
+        <a-video id="emi-video-plane" src="#video-emifilter" width="1.5" height="0.828" position="0 0 0" visible="false"></a-video>
+      </a-entity>
+
+      <!-- Target 2: EMIFilter modeloa -->
+      <a-entity id="target-emifilter" mindar-image-target="targetIndex: 2">
+        <a-gltf-model
+          src="#emiFilterModelo"
+          position="0 0 0"
+          scale="0.02 0.02 0.02"
+          rotation="0 0 0"
+          touch-gestures="targetSelector: #target-emifilter; rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
         </a-gltf-model>
       </a-entity>
 
-      <!-- Target 1: Bideoa (kartela) -->
-      <a-entity id="target-bideoa" mindar-image-target="targetIndex: 1" video-handler>
-        <a-video src="#kartel-bideoa" width="1" height="0.552" position="0 0 0" rotation="0 0 0"></a-video>
-      </a-entity>
-
-      <!-- Target 2: 3D Modeloa (CMC) edo Simulazioak (8 bideo) -->
-      <a-entity id="target-modo" mindar-image-target="targetIndex: 2" modo-handler>
+      <!-- Target 3: 3D Modeloa (CMC) edo Simulazioak (8 bideo) -->
+      <a-entity id="target-modo" mindar-image-target="targetIndex: 3" modo-handler>
 
         <a-gltf-model
           id="cmc-modelo"
@@ -352,15 +456,46 @@
 
       </a-entity>
 
+      <!-- Target 4: Kondentsadorea - modeloa edo argazkia, botoi bidez -->
+      <a-entity
+        id="target-kondentsadorea"
+        mindar-image-target="targetIndex: 4"
+        bi-aukera-handler="contentA: #cond-modelo; contentB: #kondents0-plane; buttonsRow: #fila-kondentsadorea; buttonA: #btn-kond-3d; buttonB: #btn-kond-foto">
+
+        <a-gltf-model
+          id="cond-modelo"
+          src="#condModelo"
+          position="0 0 0"
+          scale="0.02 0.02 0.02"
+          rotation="0 0 0"
+          visible="true"
+          touch-gestures="targetSelector: #target-kondentsadorea; rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
+        </a-gltf-model>
+
+        <a-image id="kondents0-plane" src="#kondents0Img" width="1" height="0.75" position="0 0 0" visible="false"></a-image>
+      </a-entity>
+
+      <!-- Target 5: bi argazki batera -->
+      <a-entity id="target-kondents-parea" mindar-image-target="targetIndex: 5">
+        <a-image src="#kondents1Img" width="0.9" height="0.675" position="-0.5 0 0"></a-image>
+        <a-image src="#kondents2Img" width="0.9" height="0.675" position="0.5 0 0"></a-image>
+      </a-entity>
+
     </a-scene>
 
-    <!-- Goiko botoiak: 3D Modeloa / Simulazioak -->
+    <!-- Target 1 botoiak: 3D Eredua / Bideoa -->
+    <div id="fila-emi" class="fila-opciones">
+      <button id="btn-emi-3d" class="activo">3D Eredua</button>
+      <button id="btn-emi-bideoa">Bideoa</button>
+    </div>
+
+    <!-- Target 3 botoiak: 3D Modeloa / Simulazioak -->
     <div id="fila-top">
       <button id="btn-3d" class="activo">3D Modeloa</button>
       <button id="btn-sim">Simulazioak</button>
     </div>
 
-    <!-- Simulazio taldeak: CM/DM, Mag/Bekt, Fase/Frec -->
+    <!-- Target 3 simulazio taldeak: CM/DM, Mag/Bekt, Fase/Frec -->
     <div id="fila-sim">
       <div class="grupo-botoiak">
         <button data-grupo="g1" data-valor="cm" class="activo">CM</button>
@@ -376,30 +511,19 @@
       </div>
     </div>
 
-    <script>
-      // Kartelaren bideoaren audioa desblokeatzeko laguntzailea
-      document.body.addEventListener('click', () => {
-        const video = document.querySelector('#kartel-bideoa');
-        if (video && video.paused) {
-          const targetBideoa = document.querySelector('#target-bideoa');
-          if (targetBideoa && targetBideoa.object3D.visible) {
-            video.play();
-          }
-        }
-      });
+    <!-- Target 4 botoiak: 3D Eredua / Kondentsadoreak -->
+    <div id="fila-kondentsadorea" class="fila-opciones">
+      <button id="btn-kond-3d" class="activo">3D Eredua</button>
+      <button id="btn-kond-foto">Kondentsadoreak</button>
+    </div>
 
+    <script>
       document.addEventListener('DOMContentLoaded', () => {
         const targetModo = document.querySelector('#target-modo');
-
         const getComp = () => targetModo.components['modo-handler'];
 
-        document.querySelector('#btn-3d').addEventListener('click', () => {
-          getComp().setTopMode('3d');
-        });
-
-        document.querySelector('#btn-sim').addEventListener('click', () => {
-          getComp().setTopMode('sim');
-        });
+        document.querySelector('#btn-3d').addEventListener('click', () => getComp().setTopMode('3d'));
+        document.querySelector('#btn-sim').addEventListener('click', () => getComp().setTopMode('sim'));
 
         document.querySelectorAll('#fila-sim button').forEach(btn => {
           btn.addEventListener('click', () => {
