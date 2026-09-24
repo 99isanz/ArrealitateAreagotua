@@ -240,6 +240,26 @@
         }
       });
 
+      // Bideo/argazki lauak beti kamerari begira mantentzeko osagaia.
+      // Horrela, marker-aren angelua aldatu arren, panela ez da okertzen/biratzen;
+      // erabiltzaileak pellizkoarekin/arrastatuz eginiko aldaketak bakarrik ikusiko dira.
+      AFRAME.registerComponent('billboard', {
+        tick: function () {
+          const cameraObj = this.el.sceneEl.camera;
+          const parent = this.el.object3D.parent;
+          if (!cameraObj || !parent) return;
+
+          const camWorldQuat = new THREE.Quaternion();
+          cameraObj.getWorldQuaternion(camWorldQuat);
+
+          const parentWorldQuat = new THREE.Quaternion();
+          parent.getWorldQuaternion(parentWorldQuat);
+
+          const localQuat = parentWorldQuat.clone().invert().multiply(camWorldQuat);
+          this.el.object3D.quaternion.copy(localQuat);
+        }
+      });
+
       // Eredu bat automatikoki erdiratzeko osagaia (pibotea ez badago
       // ereduaren benetako erdigunean, adib. Cond.glb edo EMIFilter.glb)
       AFRAME.registerComponent('center-model', {
@@ -542,6 +562,7 @@
           src="#video-kotxia"
           width="2.7" height="1.49"
           position="0 0 0" rotation="0 0 0"
+          billboard
           pinch-scale="targetSelector: #target-kotxia; minScale: 0.3; maxScale: 5">
         </a-video>
       </a-entity>
@@ -567,6 +588,7 @@
           src="#video-emifilter"
           width="1.5" height="0.828"
           position="0 0 0" visible="false"
+          billboard
           pinch-scale="targetSelector: #target-emi; minScale: 0.3; maxScale: 5">
         </a-video>
       </a-entity>
@@ -596,14 +618,14 @@
           touch-gestures="targetSelector: #target-modo; rotationFactor: 6; minScale: 0.1; maxScale: 10; panFactor: 0.02">
         </a-gltf-model>
 
-        <a-video id="plane-dmVectFrec" src="#video-dmVectFrec" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
-        <a-video id="plane-dmVectFas" src="#video-dmVectFas" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
-        <a-video id="plane-dmMagFrec" src="#video-dmMagFrec" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
-        <a-video id="plane-dmMagFas" src="#video-dmMagFas" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
-        <a-video id="plane-cmVectFrec" src="#video-cmVectFrec" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
-        <a-video id="plane-cmVectFas" src="#video-cmVectFas" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
-        <a-video id="plane-cmMagFrec" src="#video-cmMagFrec" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
-        <a-video id="plane-cmMagFas" src="#video-cmMagFas" width="1.5" height="0.828" position="0 0 0" visible="false" pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-dmVectFrec" src="#video-dmVectFrec" width="1.5" height="0.828" position="0 0 0" visible="false" billboard pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-dmVectFas" src="#video-dmVectFas" width="1.5" height="0.828" position="0 0 0" visible="false" billboard pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-dmMagFrec" src="#video-dmMagFrec" width="1.5" height="0.828" position="0 0 0" visible="false" billboard pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-dmMagFas" src="#video-dmMagFas" width="1.5" height="0.828" position="0 0 0" visible="false" billboard pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-cmVectFrec" src="#video-cmVectFrec" width="1.5" height="0.828" position="0 0 0" visible="false" billboard pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-cmVectFas" src="#video-cmVectFas" width="1.5" height="0.828" position="0 0 0" visible="false" billboard pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-cmMagFrec" src="#video-cmMagFrec" width="1.5" height="0.828" position="0 0 0" visible="false" billboard pinch-scale="targetSelector: #target-modo"></a-video>
+        <a-video id="plane-cmMagFas" src="#video-cmMagFas" width="1.5" height="0.828" position="0 0 0" visible="false" billboard pinch-scale="targetSelector: #target-modo"></a-video>
 
       </a-entity>
 
@@ -629,22 +651,31 @@
           src="#kondents0Img"
           width="1.6" height="1.2"
           position="0 0 0" visible="false"
+          billboard
           pinch-scale="targetSelector: #target-kondentsadorea; minScale: 0.3; maxScale: 5">
         </a-image>
       </a-entity>
 
-      <!-- Target 5: bi argazki batera -->
-      <a-entity id="target-kondents-parea" mindar-image-target="targetIndex: 5">
+      <!-- Target 5: bi argazki, botoi bidez (bata bestearen ordez) -->
+      <a-entity
+        id="target-kondents-parea"
+        mindar-image-target="targetIndex: 5"
+        bi-aukera-handler="contentA: #kondents1-plane; contentB: #kondents2-plane; buttonsRow: #fila-kondents-parea; buttonA: #btn-kondents1; buttonB: #btn-kondents2">
+
         <a-image
+          id="kondents1-plane"
           src="#kondents1Img"
-          width="1.4" height="1.05"
-          position="-0.75 0 0"
+          width="1.6" height="1.2"
+          position="0 0 0" visible="true"
+          billboard
           pinch-scale="targetSelector: #target-kondents-parea; minScale: 0.3; maxScale: 5">
         </a-image>
         <a-image
+          id="kondents2-plane"
           src="#kondents2Img"
-          width="1.4" height="1.05"
-          position="0.75 0 0"
+          width="1.6" height="1.2"
+          position="0 0 0" visible="false"
+          billboard
           pinch-scale="targetSelector: #target-kondents-parea; minScale: 0.3; maxScale: 5">
         </a-image>
       </a-entity>
@@ -688,6 +719,12 @@
       <button id="btn-kond-foto">Kondentsadoreak</button>
     </div>
 
+    <!-- Target 5 botoiak: Argazkia 1 / Argazkia 2 -->
+    <div id="fila-kondents-parea" class="fila-opciones">
+      <button id="btn-kondents1" class="activo">Argazkia 1</button>
+      <button id="btn-kondents2">Argazkia 2</button>
+    </div>
+
     <script>
       document.addEventListener('DOMContentLoaded', () => {
         const targetModo = document.querySelector('#target-modo');
@@ -713,6 +750,22 @@
         const btnBlokeo = document.querySelector('#btn-blokeo');
         const sceneEl = document.querySelector('a-scene');
 
+        // Target guztien IDak, eskaneoa berrabiaraztean guztiak "galdu" bezala
+        // markatzeko eta gainjartzerik ez izateko
+        const targetIds = [
+          'target-kotxia', 'target-emi', 'target-emifilter',
+          'target-modo', 'target-kondentsadorea', 'target-kondents-parea'
+        ];
+
+        const resetAllTargets = () => {
+          targetIds.forEach(id => {
+            const targetEl = document.getElementById(id);
+            if (!targetEl) return;
+            targetEl.object3D.visible = false;
+            targetEl.dispatchEvent(new CustomEvent('targetLost'));
+          });
+        };
+
         btnBlokeo.addEventListener('click', () => {
           const mindarSystem = sceneEl.systems['mindar-image-system'];
           if (!mindarSystem) {
@@ -728,6 +781,7 @@
             btnBlokeo.classList.remove('eskaneatzen');
             btnBlokeo.classList.add('blokeatuta');
           } else {
+            resetAllTargets();
             mindarSystem.unpause();
             btnBlokeo.textContent = 'Eskaneatzen';
             btnBlokeo.classList.remove('blokeatuta');
