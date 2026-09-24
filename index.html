@@ -265,15 +265,25 @@
       AFRAME.registerComponent('center-model', {
         init: function () {
           this.el.addEventListener('model-loaded', () => {
-            const mesh = this.el.getObject3D('mesh');
-            if (!mesh) return;
+            try {
+              const mesh = this.el.getObject3D('mesh');
+              if (!mesh) return;
 
-            const box = new THREE.Box3().setFromObject(mesh);
-            const center = box.getCenter(new THREE.Vector3());
+              const box = new THREE.Box3().setFromObject(mesh);
+              const center = box.getCenter(new THREE.Vector3());
 
-            mesh.position.x -= center.x;
-            mesh.position.y -= center.y;
-            mesh.position.z -= center.z;
+              // Balio baliogabeak badira (NaN/Infinity), ez ukitu ereduaren posizioa
+              if (!isFinite(center.x) || !isFinite(center.y) || !isFinite(center.z)) {
+                console.warn('center-model: erdigune baliogabea, ez da zuzendu.', this.el.id || this.el);
+                return;
+              }
+
+              mesh.position.x -= center.x;
+              mesh.position.y -= center.y;
+              mesh.position.z -= center.z;
+            } catch (err) {
+              console.warn('center-model: errorea erdiratzean, jatorrizko posizioari eutsiko zaio.', err);
+            }
           });
         }
       });
@@ -325,7 +335,7 @@
 
           this.el.addEventListener('targetFound', () => {
             if (this.buttonsRow) this.buttonsRow.style.display = 'flex';
-            this.applyState();
+            this.applyState(false); // ez berrezarri bideoa, jarraitu bere puntutik
           });
 
           this.el.addEventListener('targetLost', () => {
@@ -340,21 +350,23 @@
 
         selectOption: function (opt) {
           this.option = opt;
-          this.applyState();
+          this.applyState(true);
         },
 
-        applyState: function () {
+        applyState: function (resetVideo) {
+          if (resetVideo === undefined) resetVideo = true;
+
           const isA = this.option === 'A';
 
           if (this.contentA) this.contentA.setAttribute('visible', isA);
           if (this.contentB) this.contentB.setAttribute('visible', !isA);
 
           if (this.videoA) {
-            if (isA) { this.videoA.currentTime = 0; this.videoA.play().catch(() => {}); }
+            if (isA) { if (resetVideo) this.videoA.currentTime = 0; this.videoA.play().catch(() => {}); }
             else { this.videoA.pause(); }
           }
           if (this.videoB) {
-            if (!isA) { this.videoB.currentTime = 0; this.videoB.play().catch(() => {}); }
+            if (!isA) { if (resetVideo) this.videoB.currentTime = 0; this.videoB.play().catch(() => {}); }
             else { this.videoB.pause(); }
           }
 
@@ -391,7 +403,7 @@
 
           this.el.addEventListener('targetFound', () => {
             this.uiTop.style.display = 'flex';
-            this.applyState();
+            this.applyState(false); // ez berrezarri bideoa, jarraitu bere puntutik
           });
 
           this.el.addEventListener('targetLost', () => {
@@ -411,15 +423,17 @@
 
         setTopMode: function (mode) {
           this.topMode = mode;
-          this.applyState();
+          this.applyState(true);
         },
 
         setGrupo: function (grupo, valor) {
           this.combo[grupo] = valor;
-          this.applyState();
+          this.applyState(true);
         },
 
-        applyState: function () {
+        applyState: function (resetVideo) {
+          if (resetVideo === undefined) resetVideo = true;
+
           const show3d = this.topMode === '3d';
           const showSim = this.topMode === 'sim';
 
@@ -435,7 +449,7 @@
               const active = key === activeKey;
               item.plane.setAttribute('visible', active);
               if (active) {
-                item.video.currentTime = 0;
+                if (resetVideo) item.video.currentTime = 0;
                 item.video.play().catch(() => {});
               } else {
                 item.video.pause();
@@ -510,11 +524,28 @@
       }
       #btn-blokeo.eskaneatzen { background: #2ecc71; }
       #btn-blokeo.blokeatuta { background: #e74c3c; }
+
+      /* Bilatzen ari dela adierazteko etiketa propioa (MindAR-en UI nagusia ordezkatzen du) */
+      #bilaketa-adierazlea {
+        display: none;
+        position: fixed;
+        top: 66px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 998;
+        padding: 6px 16px;
+        border-radius: 16px;
+        background: rgba(0, 0, 0, 0.45);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        pointer-events: none;
+      }
     </style>
   </head>
   <body>
     <a-scene
-      mindar-image="imageTargetSrc: ./targets.mind;"
+      mindar-image="imageTargetSrc: ./targets.mind; uiScanning: no; uiLoading: no; uiError: no;"
       color-space="sRGB"
       renderer="colorManagement: true;"
       vr-mode-ui="enabled: false"
@@ -684,6 +715,7 @@
 
     <!-- Blokeo / eskaneo botoia -->
     <button id="btn-blokeo" class="eskaneatzen">Eskaneatzen</button>
+    <div id="bilaketa-adierazlea">Bilatzen...</div>
 
     <!-- Target 1 botoiak: 3D Eredua / Bideoa -->
     <div id="fila-emi" class="fila-opciones">
@@ -766,6 +798,31 @@
           });
         };
 
+        // "Bilatzen..." adierazlea: ez dago blokeatuta ETA ez da target bat ere ikusten denean
+        const adierazlea = document.querySelector('#bilaketa-adierazlea');
+        const aurkitutaState = {};
+        targetIds.forEach(id => { aurkitutaState[id] = false; });
+
+        const eguneratuAdierazlea = () => {
+          const edozeinAurkituta = Object.values(aurkitutaState).some(v => v);
+          adierazlea.style.display = (!blokeatuta && !edozeinAurkituta) ? 'block' : 'none';
+        };
+
+        targetIds.forEach(id => {
+          const targetEl = document.getElementById(id);
+          if (!targetEl) return;
+          targetEl.addEventListener('targetFound', () => {
+            aurkitutaState[id] = true;
+            eguneratuAdierazlea();
+          });
+          targetEl.addEventListener('targetLost', () => {
+            aurkitutaState[id] = false;
+            eguneratuAdierazlea();
+          });
+        });
+
+        eguneratuAdierazlea();
+
         btnBlokeo.addEventListener('click', () => {
           const mindarSystem = sceneEl.systems['mindar-image-system'];
           if (!mindarSystem) {
@@ -787,6 +844,8 @@
             btnBlokeo.classList.remove('blokeatuta');
             btnBlokeo.classList.add('eskaneatzen');
           }
+
+          eguneratuAdierazlea();
         });
       });
     </script>
